@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Làm bài · MAD101</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div id="top"></div>
+<div class="container wide">
+  <div class="flex" style="justify-content:space-between">
+    <div>
+      <a href="index.html" class="muted small">← Danh sách đề</a>
+      <h1 id="title" style="margin:6px 0 0">…</h1>
+      <div class="muted small" id="subtitle"></div>
+    </div>
+  </div>
+
+  <div class="qwrap" style="margin-top:18px">
+    <aside class="sidebar">
+      <div class="card">
+        <div class="scorebox" id="timerbox">
+          <div class="muted small">Thời gian còn lại</div>
+          <div class="timer" id="timer">--:--</div>
+        </div>
+        <div class="muted small" id="answeredCount" style="text-align:center"></div>
+        <div class="muted small" id="flagCount" style="text-align:center;margin-bottom:8px"></div>
+        <button class="btn green" id="submitBtn" style="width:100%;justify-content:center">Nộp bài</button>
+        <div class="spacer"></div>
+        <div class="navgrid" id="navgrid"></div>
+        <div class="spacer"></div>
+        <a class="btn ghost" href="index.html" style="width:100%;justify-content:center">Thoát</a>
+      </div>
+    </aside>
+
+    <div id="questions"></div>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+document.getElementById('top').outerHTML = renderTopbar('');
+
+const params = new URLSearchParams(location.search);
+const EXAM_ID = params.get('exam');
+const REVIEW = params.get('review') === '1';
+
+let MANIFEST, ANSWERS, EXAM, KEY;
+const picks = {};        // { 'NN.jpg': 'A' }
+const flags = new Set(); // chỉ số câu được gắn cờ
+let startTs = Date.now();
+let timerInt = null;
+let submitted = false;
+let TOTAL_SEC = 0;       // tổng thời gian được phép (đếm ngược)
+
+function optEl(img, letter) {
+  return `<label class="opt" data-img="${img}" data-letter="${letter}">
+    <input type="radio" name="q_${img}" value="${letter}">${letter}
+  </label>`;
+}
+
+function questionCard(img, idx) {
+  return `
+  <div class="qcard" id="q-${idx}">
+    <div class="qhead">
+      <span class="qnum">Câu ${idx + 1}<span class="muted">/${EXAM.count}</span></span>
+      <div class="flex">
+        <span class="muted small mark" id="mark-${idx}"></span>
+        <button class="flagbtn" id="flag-${idx}" data-idx="${idx}" title="Gắn cờ để xem lại">🚩 Gắn cờ</button>
+      </div>
+    </div>
+    <img class="qimg" loading="lazy" src="${imgUrl(EXAM_ID, img)}" alt="Câu ${idx + 1}">
+    <div class="opts" id="opts-${idx}">
+      ${OPTIONS.map(l => optEl(img, l)).join('')}
+    </div>
+  </div>`;
+}
+
+function buildNav() {
+  const nav = document.getElementById('navgrid');
+  nav.innerHTML = EXAM.images.map((img, i) =>
+    `<a href="#q-${i}" id="nav-${i}">${i + 1}</a>`).join('');
+}
+
+function updateAnsweredCount() {
+  const n = Object.keys(picks).length;
+  document.getElementById('answeredCount').textContent = `Đã chọn ${n}/${EXAM.count} câu`;
+}
+
+function updateFlagCount() {
+  const el = document.getElementById('flagCount');
+  el.textContent = flags.size ? `🚩 Đã gắn cờ ${flags.size} câu` : '';
+}
+
+function toggleFlag(idx) {
+  const on = flags.has(idx);
+  if (on) flags.delete(idx); else flags.add(idx);
+  const btn = document.getElementById(`flag-${idx}`);
+  btn.classList.toggle('on', !on);
+  btn.innerHTML = on ? '🚩 Gắn cờ' : '🚩 Đã cờ';
+  document.getElementById(`nav-${idx}`).classList.toggle('flagged', !on);
+  document.getElementById(`q-${idx}`).classList.toggle('flagged-card', !on);
+  updateFlagCount();
+}
+
+function onPick(img, letter, idx) {
+  if (submitted) return;
+  picks[img] = letter;
+  document.querySelectorAll(`#opts-${idx} .opt`).forEach(o =>
+    o.classList.toggle('sel', o.dataset.letter === letter));
+  document.getElementById(`nav-${idx}`).classList.add('answered');
+  updateAnsweredCount();
+}
+
+function tick() {
+  if (submitted) return;
+  const elapsed = (Date.now() - startTs) / 1000;
+  const remaining = TOTAL_SEC - elapsed;
+  const el = document.getElementById('timer');
+  if (remaining <= 0) {
+    el.textContent = '00:00';
+    el.style.color = 'var(--red)';
+    gradeAndShow(TOTAL_SEC, true);
+    toast('Hết giờ — đã tự nộp bài');
+    return;
+  }
+  el.textContent = fmtTime(remaining);
+  el.style.color = remaining <= 60 ? 'var(--red)' : '';   // 1 phút cuối: đỏ
+}
+
+function gradeAndShow(timeSec, persist) {
+  submitted = true;
+  if (timerInt) clearInterval(timerInt);
+  let correct = 0;
+  const hasKeyData = KEY && Object.keys(KEY).length > 0;
+
+  EXAM.images.forEach((img, idx) => {
+    const pick = picks[img];
+    const ans = KEY ? KEY[img] : undefined;
+    const card = document.getElementById(`q-${idx}`);
+    const mark = document.getElementById(`mark-${idx}`);
+    const nav = document.getElementById(`nav-${idx}`);
+
+    // khoá lựa chọn
+    document.querySelectorAll(`#opts-${idx} .opt`).forEach(o => {
+      o.style.pointerEvents = 'none';
+      if (ans && o.dataset.letter === ans) o.classList.add('key');       // viền xanh: đáp án đúng
+      if (pick && o.dataset.letter !== ans && o.dataset.letter === pick) o.classList.add('badpick');
+    });
+
+    if (!ans) { mark.textContent = '— chưa có đáp án'; return; }
+    if (pick === ans) {
+      correct++; card.classList.add('correct'); nav.classList.remove('answered'); nav.classList.add('correct');
+      mark.innerHTML = '<span style="color:var(--green)">✓ Đúng</span>';
+    } else {
+      card.classList.add('wrong'); nav.classList.remove('answered'); nav.classList.add('wrong');
+      mark.innerHTML = pick
+        ? `<span style="color:var(--red)">✗ Sai (bạn chọn ${pick}, đúng là ${ans})</span>`
+        : `<span style="color:var(--red)">Bỏ trống (đúng là ${ans})</span>`;
+    }
+  });
+
+  const score = pct(correct, EXAM.count);
+
+  // hiện điểm thay cho timer
+  const tb = document.getElementById('timerbox');
+  tb.innerHTML = hasKeyData
+    ? `<div class="muted small">Kết quả</div>
+       <div class="big">${score}%</div>
+       <div class="small">${correct}/${EXAM.count} câu đúng</div>
+       <div class="muted small">Thời gian: ${fmtTime(timeSec)}</div>`
+    : `<div class="muted small">Đã nộp</div>
+       <div class="small" style="color:var(--amber)">Đề này admin chưa nhập đáp án nên chưa chấm được.</div>
+       <div class="muted small">Thời gian: ${fmtTime(timeSec)}</div>`;
+
+  document.getElementById('submitBtn').remove();
+
+  if (persist && hasKeyData) {
+    saveResult({
+      examId: EXAM_ID, section: EXAM.section, examName: EXAM.name,
+      total: EXAM.count, correct, score, timeSec,
+      finishedAt: new Date().toISOString(),
+      picks: { ...picks },
+    });
+    toast('Đã lưu kết quả');
+  }
+  document.getElementById('q-0')?.scrollIntoView({ behavior: 'smooth' });
+}
+
+function submit() {
+  const unanswered = EXAM.count - Object.keys(picks).length;
+  if (unanswered > 0 && !confirm(`Còn ${unanswered} câu chưa chọn. Vẫn nộp?`)) return;
+  gradeAndShow(Math.min((Date.now() - startTs) / 1000, TOTAL_SEC), true);
+}
+
+(async function () {
+  if (!EXAM_ID) { document.getElementById('title').textContent = 'Thiếu tham số đề'; return; }
+  try {
+    [MANIFEST, ANSWERS] = await Promise.all([loadManifest(), loadAnswers()]);
+  } catch (e) {
+    document.getElementById('title').textContent = 'Lỗi tải dữ liệu: ' + e.message; return;
+  }
+  EXAM = findExam(MANIFEST, EXAM_ID);
+  if (!EXAM) { document.getElementById('title').textContent = 'Không tìm thấy đề: ' + EXAM_ID; return; }
+  KEY = ANSWERS[EXAM_ID] || {};
+  TOTAL_SEC = EXAM.count * SEC_PER_QUESTION;
+
+  document.getElementById('title').textContent = EXAM.name;
+  document.getElementById('subtitle').textContent = `${EXAM.section} · ${EXAM.count} câu · ⏱ ${fmtTime(TOTAL_SEC)} (${SEC_PER_QUESTION/60} phút/câu)` +
+    (Object.keys(KEY).length ? '' : ' · ⚠ chưa có đáp án');
+
+  const qWrap = document.getElementById('questions');
+  qWrap.innerHTML = EXAM.images.map((img, i) => questionCard(img, i)).join('');
+  buildNav();
+  updateAnsweredCount();
+
+  qWrap.addEventListener('click', (ev) => {
+    const flag = ev.target.closest('.flagbtn');
+    if (flag) { toggleFlag(Number(flag.dataset.idx)); return; }
+    const opt = ev.target.closest('.opt');
+    if (!opt) return;
+    const idx = EXAM.images.indexOf(opt.dataset.img);
+    onPick(opt.dataset.img, opt.dataset.letter, idx);
+  });
+
+  if (REVIEW) {
+    // nạp lại bài làm gần nhất để xem lại (không tính giờ)
+    const last = getResults().find(r => r.examId === EXAM_ID);
+    if (last && last.picks) {
+      Object.assign(picks, last.picks);
+      EXAM.images.forEach((img, idx) => {
+        if (picks[img]) document.querySelectorAll(`#opts-${idx} .opt`).forEach(o =>
+          o.classList.toggle('sel', o.dataset.letter === picks[img]));
+      });
+      document.getElementById('timerbox').innerHTML = '<div class="muted small">Chế độ xem lại</div>';
+      gradeAndShow(last.timeSec || 0, false);
+    } else {
+      document.getElementById('submitBtn').textContent = 'Bắt đầu làm';
+      startTimer();
+      document.getElementById('submitBtn').addEventListener('click', submit);
+    }
+    return;
+  }
+
+  startTimer();
+  document.getElementById('submitBtn').addEventListener('click', submit);
+})();
+
+function startTimer() {
+  startTs = Date.now();
+  tick();
+  timerInt = setInterval(tick, 1000);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin · MAD101</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div id="top"></div>
+<div class="container">
+
+  <!-- LOGIN -->
+  <div id="loginView" style="display:none">
+    <h1>Đăng nhập Admin</h1>
+    <p class="muted">Khu vực dành cho người ra đề. Nhập mật khẩu để đặt/sửa đáp án.</p>
+    <div class="card" style="max-width:380px">
+      <div class="flex" style="flex-direction:column;align-items:stretch">
+        <label>Mật khẩu</label>
+        <input type="password" id="pw" placeholder="••••••" autofocus>
+        <div class="spacer"></div>
+        <button class="btn" id="loginBtn" style="justify-content:center">Đăng nhập</button>
+        <div class="small" id="loginErr" style="color:var(--red);min-height:18px"></div>
+        <div class="small muted">Lưu ý: web tĩnh không bảo mật thật — đây chỉ là cổng chặn nhầm. Đổi mật khẩu trong <code>assets/app.js</code> (biến <code>ADMIN_PASSWORD</code>).</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDITOR -->
+  <div id="adminView" style="display:none">
+    <div class="flex" style="justify-content:space-between">
+      <div>
+        <h1 style="margin-bottom:2px">Quản lý đáp án</h1>
+        <div class="muted small">Đặt đáp án đúng cho từng câu, rồi <b>Tải answers.json</b> và bỏ vào project (commit) để học viên chấm được.</div>
+      </div>
+      <button class="btn ghost" id="logoutBtn">Đăng xuất</button>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="flex">
+        <div>
+          <label class="small muted">Bộ đề</label><br>
+          <select id="section">
+            <option value="FE">FE</option><option value="PT">PT</option><option value="RE">RE</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:240px">
+          <label class="small muted">Đề</label><br>
+          <select id="exam" style="width:100%"></select>
+        </div>
+        <div>
+          <label class="small muted">&nbsp;</label><br>
+          <span class="pill" id="cover">—</span>
+        </div>
+      </div>
+
+      <hr>
+      <div class="flex" style="justify-content:space-between">
+        <div class="flex">
+          <button class="btn green" id="downloadBtn">⬇ Tải answers.json</button>
+          <label class="btn ghost" style="cursor:pointer">⬆ Nhập answers.json
+            <input type="file" id="importFile" accept=".json,application/json" style="display:none">
+          </label>
+        </div>
+        <div class="flex">
+          <span class="pill" id="draftState"></span>
+          <button class="btn ghost danger" id="clearDraft" title="Xoá các sửa đổi chưa tải về">Xoá nháp</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bulk fill -->
+    <details class="card" style="margin-top:14px">
+      <summary style="cursor:pointer;font-weight:700">Nhập nhanh nhiều đáp án</summary>
+      <div class="spacer"></div>
+      <p class="muted small">Dán đáp án rồi chọn cách điền. Ví dụ theo thứ tự: <code>A B C D E ...</code> · theo số: <code>1A 2C 3B</code> hoặc <code>1=A, 2=C</code>.</p>
+      <textarea id="bulk" rows="3" placeholder="A C B D A ...  hoặc  1A 2C 3B ..."></textarea>
+      <div class="spacer"></div>
+      <div class="flex">
+        <button class="btn" id="bulkSeq">Điền theo thứ tự câu</button>
+        <button class="btn ghost" id="bulkNum">Điền theo số câu</button>
+      </div>
+    </details>
+
+    <div class="spacer"></div>
+    <div id="editor" class="grid"></div>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+document.getElementById('top').outerHTML = renderTopbar('admin.html');
+
+const LS_DRAFT = 'mad101.adminDraft.v1';
+let MANIFEST, BASE = {}, WORKING = {};
+
+function showView() {
+  document.getElementById('loginView').style.display = isAdmin() ? 'none' : 'block';
+  document.getElementById('adminView').style.display = isAdmin() ? 'block' : 'none';
+}
+
+// ---- login ----
+document.getElementById('loginBtn').addEventListener('click', doLogin);
+document.getElementById('pw').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+function doLogin() {
+  if (loginAdmin(document.getElementById('pw').value)) { showView(); init(); }
+  else document.getElementById('loginErr').textContent = 'Sai mật khẩu.';
+}
+document.getElementById('logoutBtn')?.addEventListener('click', () => { logoutAdmin(); showView(); });
+
+function saveDraft() {
+  localStorage.setItem(LS_DRAFT, JSON.stringify(WORKING));
+  refreshDraftState();
+}
+function refreshDraftState() {
+  const hasDraft = !!localStorage.getItem(LS_DRAFT);
+  document.getElementById('draftState').textContent = hasDraft ? '● Có sửa đổi chưa tải về' : 'Đã đồng bộ';
+  document.getElementById('draftState').style.color = hasDraft ? 'var(--amber)' : 'var(--muted)';
+}
+
+function currentExam() {
+  const sec = document.getElementById('section').value;
+  const id = document.getElementById('exam').value;
+  return (MANIFEST.sections[sec] || []).find(e => e.id === id);
+}
+
+function fillExamSelect() {
+  const sec = document.getElementById('section').value;
+  const sel = document.getElementById('exam');
+  sel.innerHTML = (MANIFEST.sections[sec] || [])
+    .map(e => {
+      const done = Object.keys(WORKING[e.id] || {}).length;
+      return `<option value="${e.id}">${done >= e.count ? '✓ ' : (done ? '◐ ' : '○ ')}${e.name} (${done}/${e.count})</option>`;
+    }).join('');
+}
+
+function setAnswer(examId, img, letter) {
+  WORKING[examId] = WORKING[examId] || {};
+  if (letter) WORKING[examId][img] = letter;
+  else delete WORKING[examId][img];
+  saveDraft();
+}
+
+function renderEditor() {
+  const exam = currentExam();
+  if (!exam) return;
+  const key = WORKING[exam.id] || {};
+  const filled = Object.keys(key).length;
+  document.getElementById('cover').textContent = `${filled}/${exam.count} câu có đáp án`;
+
+  const ed = document.getElementById('editor');
+  ed.innerHTML = exam.images.map((img, i) => `
+    <div class="qcard">
+      <div class="qhead">
+        <span class="qnum">Câu ${i + 1}</span>
+        <select data-img="${img}" class="ansSel">
+          <option value="">— chưa đặt —</option>
+          ${OPTIONS.map(l => `<option value="${l}" ${key[img] === l ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <img class="qimg" loading="lazy" src="${imgUrl(exam.id, img)}" alt="Câu ${i + 1}">
+    </div>`).join('');
+
+  ed.querySelectorAll('.ansSel').forEach(sel => {
+    sel.addEventListener('change', () => {
+      setAnswer(exam.id, sel.dataset.img, sel.value);
+      fillExamSelect(); // cập nhật ✓/◐
+      // giữ nguyên lựa chọn đề đang xem
+      document.getElementById('exam').value = exam.id;
+      document.getElementById('cover').textContent =
+        `${Object.keys(WORKING[exam.id] || {}).length}/${exam.count} câu có đáp án`;
+    });
+  });
+}
+
+// ---- bulk fill ----
+function bulkSeq() {
+  const exam = currentExam(); if (!exam) return;
+  const letters = (document.getElementById('bulk').value.toUpperCase().match(/[A-E]/g) || []);
+  if (!letters.length) return toast('Không thấy chữ cái A–E nào');
+  letters.slice(0, exam.count).forEach((l, i) => setAnswer(exam.id, exam.images[i], l));
+  renderEditor(); fillExamSelect(); document.getElementById('exam').value = exam.id;
+  toast(`Đã điền ${Math.min(letters.length, exam.count)} câu`);
+}
+function bulkNum() {
+  const exam = currentExam(); if (!exam) return;
+  const re = /(\d+)\s*[=.:)\-]?\s*([A-E])/gi;
+  let m, n = 0;
+  while ((m = re.exec(document.getElementById('bulk').value)) !== null) {
+    const idx = parseInt(m[1], 10) - 1;
+    if (idx >= 0 && idx < exam.count) { setAnswer(exam.id, exam.images[idx], m[2].toUpperCase()); n++; }
+  }
+  if (!n) return toast('Không nhận dạng được cặp số–đáp án');
+  renderEditor(); fillExamSelect(); document.getElementById('exam').value = exam.id;
+  toast(`Đã điền ${n} câu`);
+}
+
+// ---- import / export ----
+function doDownload() {
+  // chỉ giữ các đề thật sự có đáp án để file gọn
+  const out = {};
+  for (const [id, k] of Object.entries(WORKING)) {
+    if (k && Object.keys(k).length) out[id] = k;
+  }
+  downloadFile('answers.json', JSON.stringify(out, null, 2), 'application/json');
+  toast('Đã tải answers.json — nhớ bỏ vào thư mục data/ và commit');
+}
+function doImport(file) {
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const obj = JSON.parse(r.result);
+      WORKING = { ...WORKING, ...obj };
+      saveDraft(); fillExamSelect(); renderEditor();
+      toast('Đã nhập answers.json');
+    } catch (e) { toast('File JSON không hợp lệ'); }
+  };
+  r.readAsText(file);
+}
+
+async function init() {
+  if (!MANIFEST) {
+    try { [MANIFEST, BASE] = await Promise.all([loadManifest(), loadAnswers()]); }
+    catch (e) { document.getElementById('editor').innerHTML = `<div class="card">Lỗi tải dữ liệu: ${e.message}</div>`; return; }
+  }
+  // gộp: đáp án đã commit (BASE) + bản nháp chưa tải về (draft)
+  const draft = getJSON(LS_DRAFT, null);
+  WORKING = JSON.parse(JSON.stringify(BASE));
+  if (draft) for (const [id, k] of Object.entries(draft)) WORKING[id] = { ...(WORKING[id] || {}), ...k };
+
+  document.getElementById('section').addEventListener('change', () => { fillExamSelect(); renderEditor(); });
+  document.getElementById('exam').addEventListener('change', renderEditor);
+  document.getElementById('downloadBtn').addEventListener('click', doDownload);
+  document.getElementById('importFile').addEventListener('change', e => e.target.files[0] && doImport(e.target.files[0]));
+  document.getElementById('bulkSeq').addEventListener('click', bulkSeq);
+  document.getElementById('bulkNum').addEventListener('click', bulkNum);
+  document.getElementById('clearDraft').addEventListener('click', () => {
+    if (!confirm('Xoá mọi sửa đổi chưa tải về? Sẽ quay lại đúng nội dung answers.json đã commit.')) return;
+    localStorage.removeItem(LS_DRAFT); WORKING = JSON.parse(JSON.stringify(BASE));
+    fillExamSelect(); renderEditor(); refreshDraftState(); toast('Đã xoá nháp');
+  });
+
+  fillExamSelect();
+  renderEditor();
+  refreshDraftState();
+}
+
+showView();
+if (isAdmin()) init();
+</script>
+</body>
+</html>

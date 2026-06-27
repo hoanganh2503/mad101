@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAD101 · Thi thử trắc nghiệm</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div id="top"></div>
+<div class="container">
+  <h1>Ngân hàng đề thi MAD101</h1>
+  <p class="muted">Chọn một đề để làm. Không cần đăng nhập. Kết quả &amp; thời gian làm bài được lưu lại trên máy của bạn.</p>
+
+  <div class="flex" style="margin:14px 0">
+    <input type="text" id="search" placeholder="Tìm đề…" style="min-width:240px">
+    <select id="filter">
+      <option value="all">Tất cả</option>
+      <option value="todo">Chưa làm</option>
+      <option value="done">Đã làm</option>
+    </select>
+    <span class="grow"></span>
+    <span id="stat" class="muted small"></span>
+  </div>
+
+  <div id="list"></div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+document.getElementById('top').outerHTML = renderTopbar('index.html');
+
+let MANIFEST, ANSWERS, PROGRESS;
+
+function hasKey(examId) {
+  const k = ANSWERS[examId];
+  return k && Object.keys(k).length > 0;
+}
+
+function examCard(exam) {
+  const p = PROGRESS[exam.id] || {};
+  const done = !!p.done;
+  const keyed = hasKey(exam.id);
+  const badge = done
+    ? `<span class="badge done">✓ Đã làm</span>`
+    : `<span class="badge todo">Chưa làm</span>`;
+  const nokey = keyed ? '' : `<span class="badge nokey" title="Admin chưa nhập đáp án">⚠ Chưa có đáp án</span>`;
+  const last = done
+    ? `<div class="small muted">Lần gần nhất: <b>${p.lastScore}%</b> · ${fmtTime(p.lastTimeSec)} · ${fmtDate(p.lastAt)}${p.attempts>1?` · ${p.attempts} lần`:''}</div>`
+    : `<div class="small muted">&nbsp;</div>`;
+  return `
+  <div class="card exam-card" data-done="${done}" data-name="${exam.name.toLowerCase()}">
+    <div class="row">
+      <div class="name">${exam.name}</div>
+      <span class="pill">${exam.count} câu</span>
+    </div>
+    <div class="flex">${badge}${nokey}</div>
+    ${last}
+    <div class="row">
+      <a class="btn" href="exam.html?exam=${encodeURIComponent(exam.id)}">${done ? 'Làm lại' : 'Vào làm'} →</a>
+      ${done ? `<a class="btn ghost" href="exam.html?exam=${encodeURIComponent(exam.id)}&review=1">Xem lại</a>` : ''}
+    </div>
+  </div>`;
+}
+
+function render() {
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const filter = document.getElementById('filter').value;
+  const wrap = document.getElementById('list');
+  wrap.innerHTML = '';
+  let shown = 0, total = 0, doneCount = 0;
+
+  const SECTION_LABEL = { FE: 'FE — Đề thi cuối kỳ', PT: 'PT — Progress Test / Quiz', RE: 'RE — Đề thi lại' };
+
+  for (const sec of ['FE', 'PT', 'RE']) {
+    const exams = (MANIFEST.sections[sec] || []);
+    const cards = [];
+    for (const e of exams) {
+      total++;
+      const p = PROGRESS[e.id] || {};
+      if (p.done) doneCount++;
+      if (q && !e.name.toLowerCase().includes(q)) continue;
+      if (filter === 'todo' && p.done) continue;
+      if (filter === 'done' && !p.done) continue;
+      cards.push(examCard(e));
+      shown++;
+    }
+    if (cards.length === 0) continue;
+    wrap.insertAdjacentHTML('beforeend',
+      `<div class="section-head"><span class="tag">${sec}</span><h2 style="margin:0">${SECTION_LABEL[sec]}</h2><span class="pill">${cards.length} đề</span></div>
+       <div class="grid cols" style="margin-top:12px">${cards.join('')}</div>`);
+  }
+  if (shown === 0) wrap.innerHTML = '<p class="muted">Không có đề nào khớp.</p>';
+  document.getElementById('stat').textContent = `Đã làm ${doneCount}/${total} đề`;
+}
+
+(async function () {
+  try {
+    [MANIFEST, ANSWERS] = await Promise.all([loadManifest(), loadAnswers()]);
+    PROGRESS = getProgress();
+    document.getElementById('search').addEventListener('input', render);
+    document.getElementById('filter').addEventListener('change', render);
+    render();
+  } catch (e) {
+    document.getElementById('list').innerHTML = `<div class="card">Lỗi: ${e.message}<br><span class="muted small">Hãy chạy <code>node build-manifest.js</code> rồi mở qua một web server (xem README).</span></div>`;
+  }
+})();
+</script>
+</body>
+</html>
