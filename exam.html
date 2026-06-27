@@ -149,10 +149,12 @@ function gradeAndShow(timeSec, persist) {
   if (timerInt) clearInterval(timerInt);
   let correct = 0;
   const hasKeyData = KEY && Object.keys(KEY).length > 0;
+  const details = []; // chi tiết từng câu để gửi lên Sheet
 
   EXAM.images.forEach((img, idx) => {
     const pick = picks[img];
     const ans = KEY ? KEY[img] : undefined;
+    details.push({ n: idx + 1, pick: pick || '', ans: ans || '', ok: !!ans && pick === ans });
     const card = document.getElementById(`q-${idx}`);
     const mark = document.getElementById(`mark-${idx}`);
     const nav = document.getElementById(`nav-${idx}`);
@@ -213,6 +215,10 @@ function gradeAndShow(timeSec, persist) {
         section: EXAM.section, examName: EXAM.name, examId: EXAM_ID,
         score, correct, total: EXAM.count,
         timeSec: Math.round(timeSec), timeMMSS: fmtTime(timeSec), finishedAt,
+        details,                                                  // chi tiết từng câu
+        picksStr: details.map(d => `${d.n}.${d.pick || '-'}`).join(' '),
+        keyStr:   details.map(d => `${d.n}.${d.ans || '-'}`).join(' '),
+        resultStr: details.map(d => `${d.n}.${d.ok ? 'Đ' : 'S'}`).join(' '),
       }).then(() => {
         const st = document.getElementById('sheetStatus');
         if (st) { st.textContent = '✅ Đã gửi kết quả cho giảng viên'; st.style.color = 'var(--green)'; }

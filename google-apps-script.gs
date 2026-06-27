@@ -19,7 +19,8 @@
 
 var SHEET_NAME = 'KetQua';
 var HEADERS = ['Thời điểm nhận', 'Họ tên', 'MSSV', 'Bộ', 'Tên đề', 'Mã đề',
-               'Điểm (%)', 'Đúng', 'Tổng', 'Thời gian (giây)', 'Thời gian (mm:ss)', 'Nộp lúc'];
+               'Điểm (%)', 'Đúng', 'Tổng', 'Thời gian (giây)', 'Thời gian (mm:ss)', 'Nộp lúc',
+               'HV chọn', 'Đáp án đúng', 'Đúng/Sai'];
 
 function doPost(e) {
   var lock = LockService.getScriptLock();
@@ -28,15 +29,33 @@ function doPost(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sh = ss.getSheetByName(SHEET_NAME);
     if (!sh) sh = ss.insertSheet(SHEET_NAME);
-    if (sh.getLastRow() === 0) sh.appendRow(HEADERS);
+    // tạo / mở rộng dòng tiêu đề nếu thiếu (kể cả sheet cũ chỉ có 12 cột)
+    if (sh.getLastRow() === 0) {
+      sh.appendRow(HEADERS);
+    } else {
+      var head = sh.getRange(1, 1, 1, HEADERS.length).getValues()[0];
+      if (head[HEADERS.length - 1] !== HEADERS[HEADERS.length - 1]) {
+        sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+      }
+    }
 
     var d = JSON.parse(e.postData.contents);
+
+    // 3 cột chi tiết: ưu tiên chuỗi đã định dạng từ web, nếu không thì tự dựng từ details
+    var picksStr = d.picksStr, keyStr = d.keyStr, resultStr = d.resultStr;
+    if ((!picksStr || !keyStr || !resultStr) && d.details && d.details.length) {
+      picksStr  = d.details.map(function (x) { return x.n + '.' + (x.pick || '-'); }).join(' ');
+      keyStr    = d.details.map(function (x) { return x.n + '.' + (x.ans || '-'); }).join(' ');
+      resultStr = d.details.map(function (x) { return x.n + '.' + (x.ok ? 'Đ' : 'S'); }).join(' ');
+    }
+
     sh.appendRow([
       new Date(),
       d.name || '', d.mssv || '',
       d.section || '', d.examName || '', d.examId || '',
       d.score, d.correct, d.total,
-      Math.round(d.timeSec || 0), d.timeMMSS || '', d.finishedAt || ''
+      Math.round(d.timeSec || 0), d.timeMMSS || '', d.finishedAt || '',
+      picksStr || '', keyStr || '', resultStr || ''
     ]);
     return ContentService
       .createTextOutput(JSON.stringify({ ok: true }))
