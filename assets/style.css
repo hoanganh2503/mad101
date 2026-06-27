@@ -68,6 +68,18 @@ h2 { font-size: 20px; margin: 24px 0 12px; }
 
 .pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--panel-2); color: var(--muted); }
 
+/* Danh sách đề bấm chọn (admin) */
+.examlist { margin-top: 4px; max-height: 360px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; }
+.exrow { display: flex; align-items: center; gap: 6px; padding: 9px 12px; cursor: pointer; border-bottom: 1px solid var(--line); font-size: 14px; }
+.exrow:last-child { border-bottom: none; }
+.exrow:hover { background: var(--panel-2); }
+.exrow.active { background: rgba(37,99,235,.12); box-shadow: inset 3px 0 0 var(--primary); }
+.exrow .exname { font-weight: 600; }
+.exmark { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; font-size: 12px; font-weight: 800; }
+.exmark.full { background: rgba(22,163,74,.18); color: var(--green); }
+.exmark.partial { background: rgba(217,119,6,.18); color: var(--amber); }
+.exmark.empty { background: var(--panel-2); color: var(--muted); }
+
 .section-head { display: flex; align-items: center; gap: 10px; margin-top: 26px; }
 .section-head .tag { font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 8px; background: var(--primary); color: #fff; }
 
@@ -130,6 +142,12 @@ th { color: var(--muted); font-weight: 600; }
 .timer { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 18px; }
 .scorebox { text-align: center; padding: 8px 0; }
 .scorebox .big { font-size: 34px; font-weight: 800; }
+
+.overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(15,23,42,.45); backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
 
 .toast {
   position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);

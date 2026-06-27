@@ -18,6 +18,8 @@
       <option value="all">Tất cả</option>
       <option value="todo">Chưa làm</option>
       <option value="done">Đã làm</option>
+      <option value="haskey">Có đáp án</option>
+      <option value="nokey">Chưa có đáp án</option>
     </select>
     <span class="grow"></span>
     <span id="stat" class="muted small"></span>
@@ -52,7 +54,10 @@ function examCard(exam) {
   <div class="card exam-card" data-done="${done}" data-name="${exam.name.toLowerCase()}">
     <div class="row">
       <div class="name">${exam.name}</div>
-      <span class="pill">${exam.count} câu</span>
+      <div class="flex" style="gap:6px">
+        ${exam.year ? `<span class="pill" style="background:var(--primary);color:#fff">${exam.year}</span>` : ''}
+        <span class="pill">${exam.count} câu</span>
+      </div>
     </div>
     <div class="flex">${badge}${nokey}</div>
     ${last}
@@ -82,6 +87,8 @@ function render() {
       if (q && !e.name.toLowerCase().includes(q)) continue;
       if (filter === 'todo' && p.done) continue;
       if (filter === 'done' && !p.done) continue;
+      if (filter === 'haskey' && !hasKey(e.id)) continue;
+      if (filter === 'nokey' && hasKey(e.id)) continue;
       cards.push(examCard(e));
       shown++;
     }

@@ -31,7 +31,7 @@
     <div class="flex" style="justify-content:space-between">
       <div>
         <h1 style="margin-bottom:2px">Quản lý đáp án</h1>
-        <div class="muted small">Đặt đáp án đúng cho từng câu, rồi <b>Tải answers.json</b> và bỏ vào project (commit) để học viên chấm được.</div>
+        <div class="muted small">Chọn đáp án là <b>tự lưu nháp</b> (trong trình duyệt, không mất khi F5). Muốn học viên chấm được thì bấm <b>⬇ Tải answers.json</b> → bỏ vào thư mục <code>data/</code> → commit.</div>
       </div>
       <button class="btn ghost" id="logoutBtn">Đăng xuất</button>
     </div>
@@ -41,17 +41,27 @@
         <div>
           <label class="small muted">Bộ đề</label><br>
           <select id="section">
+            <option value="ALL">Tất cả</option>
             <option value="FE">FE</option><option value="PT">PT</option><option value="RE">RE</option>
           </select>
         </div>
         <div style="flex:1;min-width:240px">
-          <label class="small muted">Đề</label><br>
-          <select id="exam" style="width:100%"></select>
+          <label class="small muted">Tìm đề</label><br>
+          <input type="text" id="examSearch" placeholder="Gõ tên đề… (vd: FA 2024, PT2, SU25)" style="width:100%">
         </div>
         <div>
           <label class="small muted">&nbsp;</label><br>
           <span class="pill" id="cover">—</span>
         </div>
+      </div>
+      <div class="flex" style="margin-top:10px">
+        <label class="small" style="font-weight:600"><input type="checkbox" id="onlyMissing"> Chỉ hiện đề chưa đủ đáp án</label>
+        <span class="grow"></span>
+        <span class="muted small" id="examCountInfo"></span>
+      </div>
+      <div style="margin-top:8px">
+        <label class="small muted">Đề (bấm để mở)</label>
+        <div id="examList" class="examlist"></div>
       </div>
 
       <hr>
@@ -73,7 +83,7 @@
     <details class="card" style="margin-top:14px">
       <summary style="cursor:pointer;font-weight:700">Nhập nhanh nhiều đáp án</summary>
       <div class="spacer"></div>
-      <p class="muted small">Dán đáp án rồi chọn cách điền. Ví dụ theo thứ tự: <code>A B C D E ...</code> · theo số: <code>1A 2C 3B</code> hoặc <code>1=A, 2=C</code>.</p>
+      <p class="muted small">Dán đáp án rồi chọn cách điền. Ví dụ theo thứ tự: <code>A C B D F ...</code> · theo số: <code>1A 2C 3B</code> hoặc <code>1=A, 2=C</code>.</p>
       <textarea id="bulk" rows="3" placeholder="A C B D A ...  hoặc  1A 2C 3B ..."></textarea>
       <div class="spacer"></div>
       <div class="flex">
@@ -83,6 +93,7 @@
     </details>
 
     <div class="spacer"></div>
+    <div id="editorHead"></div>
     <div id="editor" class="grid"></div>
   </div>
 </div>
@@ -118,20 +129,54 @@ function refreshDraftState() {
   document.getElementById('draftState').style.color = hasDraft ? 'var(--amber)' : 'var(--muted)';
 }
 
+let EXAMS_BY_ID = {};
+let selectedExamId = null;
+
 function currentExam() {
-  const sec = document.getElementById('section').value;
-  const id = document.getElementById('exam').value;
-  return (MANIFEST.sections[sec] || []).find(e => e.id === id);
+  return EXAMS_BY_ID[selectedExamId] || null;
 }
 
-function fillExamSelect() {
+// Lọc theo bộ đề + từ khoá + "chỉ chưa đủ đáp án"
+function visibleExams() {
   const sec = document.getElementById('section').value;
-  const sel = document.getElementById('exam');
-  sel.innerHTML = (MANIFEST.sections[sec] || [])
-    .map(e => {
-      const done = Object.keys(WORKING[e.id] || {}).length;
-      return `<option value="${e.id}">${done >= e.count ? '✓ ' : (done ? '◐ ' : '○ ')}${e.name} (${done}/${e.count})</option>`;
-    }).join('');
+  const q = document.getElementById('examSearch').value.trim().toLowerCase();
+  const onlyMissing = document.getElementById('onlyMissing').checked;
+  const secs = sec === 'ALL' ? ['FE', 'PT', 'RE'] : [sec];
+  const out = [];
+  for (const s of secs) {
+    for (const e of (MANIFEST.sections[s] || [])) {
+      if (q && !e.name.toLowerCase().includes(q)) continue;
+      const filled = Object.keys(WORKING[e.id] || {}).length;
+      if (onlyMissing && filled >= e.count) continue;
+      out.push({ exam: e, sec: s, filled });
+    }
+  }
+  return out;
+}
+
+// Vẽ lại danh sách đề (không tự đổi đề đang chọn)
+function fillExamSelect() {
+  const wrap = document.getElementById('examList');
+  const showSec = document.getElementById('section').value === 'ALL';
+  const list = visibleExams();
+  wrap.innerHTML = list.map(({ exam: e, sec, filled }) => {
+    const mark = filled >= e.count ? '✓' : (filled ? '◐' : '○');
+    const cls = filled >= e.count ? 'full' : (filled ? 'partial' : 'empty');
+    const tag = showSec ? `<span class="pill" style="margin-right:6px">${sec}</span>` : '';
+    return `<div class="exrow ${e.id === selectedExamId ? 'active' : ''}" data-id="${e.id}">
+      <span class="exmark ${cls}">${mark}</span>${tag}<span class="exname">${e.name}</span>
+      <span class="grow"></span><span class="pill">${filled}/${e.count}</span>
+    </div>`;
+  }).join('') || '<div class="muted small" style="padding:10px">Không có đề nào khớp.</div>';
+  document.getElementById('examCountInfo').textContent = `${list.length} đề`;
+}
+
+function selectExam(id, scroll) {
+  selectedExamId = id;
+  document.querySelectorAll('#examList .exrow').forEach(r =>
+    r.classList.toggle('active', r.dataset.id === id));
+  renderEditor();
+  if (scroll) document.getElementById('editorHead').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function setAnswer(examId, img, letter) {
@@ -141,12 +186,22 @@ function setAnswer(examId, img, letter) {
   saveDraft();
 }
 
+function updateCover(exam) {
+  const filled = Object.keys(WORKING[exam.id] || {}).length;
+  document.getElementById('cover').textContent = `${filled}/${exam.count} câu có đáp án`;
+  document.getElementById('editorHead').innerHTML =
+    `<h2 style="margin:6px 0">${exam.name} <span class="muted" style="font-size:14px">· ${exam.section} · ${filled}/${exam.count} câu có đáp án</span></h2>`;
+}
+
 function renderEditor() {
   const exam = currentExam();
-  if (!exam) return;
+  if (!exam) {
+    document.getElementById('editor').innerHTML = '';
+    document.getElementById('editorHead').innerHTML = '<p class="muted" style="padding:8px">Chọn một đề ở danh sách trên để nhập đáp án.</p>';
+    return;
+  }
   const key = WORKING[exam.id] || {};
-  const filled = Object.keys(key).length;
-  document.getElementById('cover').textContent = `${filled}/${exam.count} câu có đáp án`;
+  updateCover(exam);
 
   const ed = document.getElementById('editor');
   ed.innerHTML = exam.images.map((img, i) => `
@@ -164,11 +219,8 @@ function renderEditor() {
   ed.querySelectorAll('.ansSel').forEach(sel => {
     sel.addEventListener('change', () => {
       setAnswer(exam.id, sel.dataset.img, sel.value);
-      fillExamSelect(); // cập nhật ✓/◐
-      // giữ nguyên lựa chọn đề đang xem
-      document.getElementById('exam').value = exam.id;
-      document.getElementById('cover').textContent =
-        `${Object.keys(WORKING[exam.id] || {}).length}/${exam.count} câu có đáp án`;
+      fillExamSelect();   // cập nhật ✓/◐ trong danh sách
+      updateCover(exam);  // cập nhật bộ đếm
     });
   });
 }
@@ -176,22 +228,22 @@ function renderEditor() {
 // ---- bulk fill ----
 function bulkSeq() {
   const exam = currentExam(); if (!exam) return;
-  const letters = (document.getElementById('bulk').value.toUpperCase().match(/[A-E]/g) || []);
-  if (!letters.length) return toast('Không thấy chữ cái A–E nào');
+  const letters = (document.getElementById('bulk').value.toUpperCase().match(/[A-F]/g) || []);
+  if (!letters.length) return toast('Không thấy chữ cái A–F nào');
   letters.slice(0, exam.count).forEach((l, i) => setAnswer(exam.id, exam.images[i], l));
-  renderEditor(); fillExamSelect(); document.getElementById('exam').value = exam.id;
+  renderEditor(); fillExamSelect();
   toast(`Đã điền ${Math.min(letters.length, exam.count)} câu`);
 }
 function bulkNum() {
   const exam = currentExam(); if (!exam) return;
-  const re = /(\d+)\s*[=.:)\-]?\s*([A-E])/gi;
+  const re = /(\d+)\s*[=.:)\-]?\s*([A-F])/gi;
   let m, n = 0;
   while ((m = re.exec(document.getElementById('bulk').value)) !== null) {
     const idx = parseInt(m[1], 10) - 1;
     if (idx >= 0 && idx < exam.count) { setAnswer(exam.id, exam.images[idx], m[2].toUpperCase()); n++; }
   }
   if (!n) return toast('Không nhận dạng được cặp số–đáp án');
-  renderEditor(); fillExamSelect(); document.getElementById('exam').value = exam.id;
+  renderEditor(); fillExamSelect();
   toast(`Đã điền ${n} câu`);
 }
 
@@ -223,13 +275,24 @@ async function init() {
     try { [MANIFEST, BASE] = await Promise.all([loadManifest(), loadAnswers()]); }
     catch (e) { document.getElementById('editor').innerHTML = `<div class="card">Lỗi tải dữ liệu: ${e.message}</div>`; return; }
   }
+  // tra cứu nhanh đề theo id (dùng cho currentExam khi chọn "Tất cả")
+  EXAMS_BY_ID = {};
+  for (const s of ['FE', 'PT', 'RE']) for (const e of (MANIFEST.sections[s] || [])) EXAMS_BY_ID[e.id] = { ...e, section: s };
+
   // gộp: đáp án đã commit (BASE) + bản nháp chưa tải về (draft)
   const draft = getJSON(LS_DRAFT, null);
   WORKING = JSON.parse(JSON.stringify(BASE));
   if (draft) for (const [id, k] of Object.entries(draft)) WORKING[id] = { ...(WORKING[id] || {}), ...k };
 
-  document.getElementById('section').addEventListener('change', () => { fillExamSelect(); renderEditor(); });
-  document.getElementById('exam').addEventListener('change', renderEditor);
+  document.getElementById('section').addEventListener('change', fillExamSelect);
+  // bấm vào một đề trong danh sách để mở phần nhập đáp án
+  document.getElementById('examList').addEventListener('click', (ev) => {
+    const row = ev.target.closest('.exrow');
+    if (row) selectExam(row.dataset.id, true);
+  });
+  // tìm kiếm & lọc: chỉ lọc lại danh sách, mở đề khi bấm vào
+  document.getElementById('examSearch').addEventListener('input', fillExamSelect);
+  document.getElementById('onlyMissing').addEventListener('change', fillExamSelect);
   document.getElementById('downloadBtn').addEventListener('click', doDownload);
   document.getElementById('importFile').addEventListener('change', e => e.target.files[0] && doImport(e.target.files[0]));
   document.getElementById('bulkSeq').addEventListener('click', bulkSeq);
@@ -241,7 +304,9 @@ async function init() {
   });
 
   fillExamSelect();
-  renderEditor();
+  const first = visibleExams()[0];
+  if (first) selectExam(first.exam.id, false);
+  else renderEditor();
   refreshDraftState();
 }
 

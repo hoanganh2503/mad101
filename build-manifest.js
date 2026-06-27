@@ -22,6 +22,16 @@ function isRealImage(file) {
   return jpeg || png || gif || webp;
 }
 
+// Đọc năm từ tên đề: ưu tiên năm 4 chữ số (2024), nếu không có thì lấy
+// mã mùa + 2 chữ số (FA25, SU25, SP26, FA21, SP26 trong MAD101_SP26_FE...).
+function parseYear(name) {
+  const m4 = name.match(/\b(?:19|20)\d{2}\b/);
+  if (m4) return parseInt(m4[0], 10);
+  const m2 = name.match(/(?:FA|SP|SU|WI|FALL|SPRING|SUMMER)\s*[-_]?\s*(\d{2})(?!\d)/i);
+  if (m2) return 2000 + parseInt(m2[1], 10);
+  return 0; // không xác định -> xếp cuối
+}
+
 const manifest = { generatedAt: new Date().toISOString(), sections: {} };
 let totalExams = 0, totalQuestions = 0, droppedFiles = 0;
 
@@ -50,10 +60,12 @@ for (const section of SECTIONS) {
       }
     }
     if (questions.length === 0) continue;
-    exams.push({ id: `${section}/${examName}`, name: examName, count: questions.length, images: questions });
+    exams.push({ id: `${section}/${examName}`, name: examName, year: parseYear(examName), count: questions.length, images: questions });
     totalExams++;
     totalQuestions += questions.length;
   }
+  // sắp xếp theo năm giảm dần, cùng năm thì theo tên
+  exams.sort((a, b) => b.year - a.year || a.name.localeCompare(b.name, undefined, { numeric: true }));
   manifest.sections[section] = exams;
 }
 

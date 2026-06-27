@@ -14,10 +14,16 @@ const SEC_PER_QUESTION = 72;
 const LS_PROGRESS = 'mad101.progress.v1'; // { [examId]: {done, bestScore, lastScore, lastTimeSec, attempts, lastAt} }
 const LS_RESULTS  = 'mad101.results.v1';  // [ {examId, section, examName, total, correct, score, timeSec, finishedAt, picks} ]
 const LS_ADMIN    = 'mad101.admin.v1';    // "1" nếu đã đăng nhập admin
+const LS_STUDENT  = 'mad101.student.v1';  // { name, mssv }
 
 // ---- Đổi mật khẩu admin tại đây (lưu ý: web tĩnh không bảo mật thật,
 //      ai xem source cũng thấy — chỉ để tránh học viên bấm nhầm vào trang admin) ----
 const ADMIN_PASSWORD = 'mad101';
+
+// ---- Gom kết quả về Google Sheet ----
+// Dán link Web App của Google Apps Script vào đây (xem README mục "Gom kết quả").
+// Để trống "" nếu chưa dùng — khi đó kết quả chỉ lưu trên máy học viên.
+const RESULTS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbxGVqJN6wVns_nD7s3ZXa3NnLXddWavxABk-pHf9tSqNsvwCRy2GsG2aO_xE1NYj5JQeg/exec';
 
 // ---------- fetch helpers ----------
 async function loadManifest() {
@@ -72,6 +78,22 @@ function saveResult(result) {
   p.bestScore = Math.max(p.bestScore || 0, result.score);
   prog[result.examId] = p;
   setJSON(LS_PROGRESS, prog);
+}
+
+// ---------- thông tin học viên ----------
+function getStudent() { return getJSON(LS_STUDENT, { name: '', mssv: '' }); }
+function setStudent(s) { setJSON(LS_STUDENT, s); }
+
+// Gửi kết quả về Google Sheet (nếu đã cấu hình RESULTS_ENDPOINT).
+// Dùng no-cors + body text → không bị chặn CORS, không cần đọc phản hồi (gửi là xong).
+function submitResultToSheet(payload) {
+  if (!RESULTS_ENDPOINT) return Promise.resolve(false);
+  return fetch(RESULTS_ENDPOINT, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload),
+  }).then(() => true).catch(() => false);
 }
 
 // ---------- format ----------

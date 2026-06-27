@@ -8,6 +8,21 @@
 </head>
 <body>
 <div id="top"></div>
+
+<!-- Lớp phủ nhập thông tin học viên trước khi làm bài -->
+<div id="idOverlay" class="overlay" style="display:none">
+  <div class="card" style="max-width:420px;width:100%">
+    <h2 style="margin-top:0">Trước khi bắt đầu</h2>
+    <p class="muted small">Nhập thông tin để nộp bài. Bài làm và thời gian sẽ được ghi nhận.</p>
+    <label class="small">Họ và tên *</label>
+    <input type="text" id="idName" placeholder="Nguyễn Văn A" style="width:100%;margin:4px 0 12px">
+    <label class="small">Mã số sinh viên *</label>
+    <input type="text" id="idMssv" placeholder="HE000000" style="width:100%;margin:4px 0 4px">
+    <div class="small" id="idErr" style="color:var(--red);min-height:18px"></div>
+    <button class="btn" id="idStart" style="width:100%;justify-content:center">Bắt đầu làm bài →</button>
+  </div>
+</div>
+
 <div class="container wide">
   <div class="flex" style="justify-content:space-between">
     <div>
@@ -177,13 +192,32 @@ function gradeAndShow(timeSec, persist) {
   document.getElementById('submitBtn').remove();
 
   if (persist && hasKeyData) {
-    saveResult({
+    const student = getStudent();
+    const finishedAt = new Date().toISOString();
+    const result = {
       examId: EXAM_ID, section: EXAM.section, examName: EXAM.name,
+      studentName: student.name, studentId: student.mssv,
       total: EXAM.count, correct, score, timeSec,
-      finishedAt: new Date().toISOString(),
+      finishedAt,
       picks: { ...picks },
-    });
+    };
+    saveResult(result);
     toast('Đã lưu kết quả');
+
+    // gửi về Google Sheet cho admin (nếu đã cấu hình endpoint)
+    if (RESULTS_ENDPOINT) {
+      const tb = document.getElementById('timerbox');
+      tb.insertAdjacentHTML('beforeend', '<div class="muted small" id="sheetStatus" style="margin-top:6px">⏳ Đang gửi kết quả…</div>');
+      submitResultToSheet({
+        name: student.name, mssv: student.mssv,
+        section: EXAM.section, examName: EXAM.name, examId: EXAM_ID,
+        score, correct, total: EXAM.count,
+        timeSec: Math.round(timeSec), timeMMSS: fmtTime(timeSec), finishedAt,
+      }).then(() => {
+        const st = document.getElementById('sheetStatus');
+        if (st) { st.textContent = '✅ Đã gửi kết quả cho giảng viên'; st.style.color = 'var(--green)'; }
+      });
+    }
   }
   document.getElementById('q-0')?.scrollIntoView({ behavior: 'smooth' });
 }
@@ -243,9 +277,34 @@ function submit() {
     return;
   }
 
-  startTimer();
   document.getElementById('submitBtn').addEventListener('click', submit);
+  startExamFlow();
 })();
+
+// Hiện form nhập Họ tên + MSSV (nếu chưa có), xong mới bắt đầu tính giờ
+function startExamFlow() {
+  const s = getStudent();
+  if (s.name && s.mssv) { beginExam(); return; }
+  const ov = document.getElementById('idOverlay');
+  document.getElementById('idName').value = s.name || '';
+  document.getElementById('idMssv').value = s.mssv || '';
+  ov.style.display = 'flex';
+  document.getElementById('idName').focus();
+  document.getElementById('idStart').addEventListener('click', () => {
+    const name = document.getElementById('idName').value.trim();
+    const mssv = document.getElementById('idMssv').value.trim();
+    if (!name || !mssv) { document.getElementById('idErr').textContent = 'Vui lòng nhập đủ Họ tên và MSSV.'; return; }
+    setStudent({ name, mssv });
+    ov.style.display = 'none';
+    beginExam();
+  });
+}
+
+function beginExam() {
+  const s = getStudent();
+  if (s.name) document.getElementById('subtitle').textContent += `  ·  👤 ${s.name}${s.mssv ? ' (' + s.mssv + ')' : ''}`;
+  startTimer();
+}
 
 function startTimer() {
   startTs = Date.now();

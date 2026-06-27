@@ -61,6 +61,24 @@ Rồi mở http://localhost:8000
 - Repo → Settings → Pages → Source: nhánh `main`, thư mục `/ (root)`.
 - Vài phút sau truy cập `https://<user>.github.io/<repo>/`.
 
+## Gom kết quả học viên về Google Sheet (tuỳ chọn)
+
+Mặc định kết quả chỉ lưu trên máy từng học viên. Muốn **tự gom hết về một Google Sheet
+cho admin xem** (học viên không cần đăng nhập), làm 1 lần:
+
+1. Tạo 1 Google Sheet trống.
+2. Trong Sheet: **Extensions → Apps Script**, dán toàn bộ nội dung `google-apps-script.gs`.
+3. **Deploy → New deployment → Web app**: Execute as **Me**, Who has access **Anyone** → Deploy → Authorize.
+4. Copy **Web app URL** (dạng `https://script.google.com/macros/s/..../exec`).
+5. Mở `assets/app.js`, dán URL vào biến `RESULTS_ENDPOINT = '...'`, rồi commit/push.
+
+Xong: mỗi lần học viên nộp bài, web tự gửi **Họ tên, MSSV, đề, điểm, số câu đúng,
+thời gian, thời điểm nộp** thành một dòng trong sheet `KetQua`. Admin chỉ việc mở Sheet để xem.
+
+> Trước khi làm bài, học viên được hỏi **Họ tên + MSSV** (lưu lại cho các lần sau trên cùng máy).
+> Link Sheet chỉ admin biết; học viên không thấy. Lưu ý đây vẫn là gửi 1 chiều — đáp án
+> trong `data/answers.json` vẫn công khai như mục trên.
+
 ## Ghi chú
 - Đăng nhập admin chỉ là cổng chặn nhầm phía giao diện, **không phải bảo mật thật**
   (web tĩnh ai cũng xem được source). Đừng coi đáp án là bí mật tuyệt đối.
