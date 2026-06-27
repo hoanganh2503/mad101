@@ -219,6 +219,7 @@ function gradeAndShow(timeSec, persist) {
         picksStr: details.map(d => `${d.n}.${d.pick || '-'}`).join(' '),
         keyStr:   details.map(d => `${d.n}.${d.ans || '-'}`).join(' '),
         resultStr: details.map(d => `${d.n}.${d.ok ? 'Đ' : 'S'}`).join(' '),
+        wrongStr: details.filter(d => d.ans && !d.ok).map(d => d.n).join(', '), // các câu sai
       }).then(() => {
         const st = document.getElementById('sheetStatus');
         if (st) { st.textContent = '✅ Đã gửi kết quả cho giảng viên'; st.style.color = 'var(--green)'; }

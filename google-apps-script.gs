@@ -20,7 +20,7 @@
 var SHEET_NAME = 'KetQua';
 var HEADERS = ['Thời điểm nhận', 'Họ tên', 'MSSV', 'Bộ', 'Tên đề', 'Mã đề',
                'Điểm (%)', 'Đúng', 'Tổng', 'Thời gian (giây)', 'Thời gian (mm:ss)', 'Nộp lúc',
-               'HV chọn', 'Đáp án đúng', 'Đúng/Sai'];
+               'HV chọn', 'Đáp án đúng', 'Đúng/Sai', 'Câu sai'];
 
 function doPost(e) {
   var lock = LockService.getScriptLock();
@@ -42,11 +42,15 @@ function doPost(e) {
     var d = JSON.parse(e.postData.contents);
 
     // 3 cột chi tiết: ưu tiên chuỗi đã định dạng từ web, nếu không thì tự dựng từ details
-    var picksStr = d.picksStr, keyStr = d.keyStr, resultStr = d.resultStr;
+    var picksStr = d.picksStr, keyStr = d.keyStr, resultStr = d.resultStr, wrongStr = d.wrongStr;
     if ((!picksStr || !keyStr || !resultStr) && d.details && d.details.length) {
       picksStr  = d.details.map(function (x) { return x.n + '.' + (x.pick || '-'); }).join(' ');
       keyStr    = d.details.map(function (x) { return x.n + '.' + (x.ans || '-'); }).join(' ');
       resultStr = d.details.map(function (x) { return x.n + '.' + (x.ok ? 'Đ' : 'S'); }).join(' ');
+    }
+    if (wrongStr == null && d.details && d.details.length) {
+      wrongStr = d.details.filter(function (x) { return x.ans && !x.ok; })
+                          .map(function (x) { return x.n; }).join(', ');
     }
 
     sh.appendRow([
@@ -55,7 +59,7 @@ function doPost(e) {
       d.section || '', d.examName || '', d.examId || '',
       d.score, d.correct, d.total,
       Math.round(d.timeSec || 0), d.timeMMSS || '', d.finishedAt || '',
-      picksStr || '', keyStr || '', resultStr || ''
+      picksStr || '', keyStr || '', resultStr || '', wrongStr || ''
     ]);
     return ContentService
       .createTextOutput(JSON.stringify({ ok: true }))
