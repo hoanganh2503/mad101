@@ -43,13 +43,18 @@ function examCard(exam) {
   const p = PROGRESS[exam.id] || {};
   const done = !!p.done;
   const keyed = hasKey(exam.id);
+  const inprog = !done ? getInProgress(exam.id) : null;
   const badge = done
     ? `<span class="badge done">✓ Đã làm</span>`
-    : `<span class="badge todo">Chưa làm</span>`;
+    : (inprog
+        ? `<span class="badge" style="background:rgba(217,119,6,.15);color:var(--amber)">⏳ Đang làm dở</span>`
+        : `<span class="badge todo">Chưa làm</span>`);
   const nokey = keyed ? '' : `<span class="badge nokey" title="Admin chưa nhập đáp án">⚠ Chưa có đáp án</span>`;
   const last = done
     ? `<div class="small muted">Lần gần nhất: <b>${p.lastScore}%</b> · ${fmtTime(p.lastTimeSec)} · ${fmtDate(p.lastAt)}${p.attempts>1?` · ${p.attempts} lần`:''}</div>`
-    : `<div class="small muted">&nbsp;</div>`;
+    : (inprog
+        ? `<div class="small muted">Đã chọn ${Object.keys(inprog.picks||{}).length}/${exam.count} câu · còn ${fmtTime((exam.count*SEC_PER_QUESTION) - (inprog.elapsedSec||0))}</div>`
+        : `<div class="small muted">&nbsp;</div>`);
   return `
   <div class="card exam-card" data-done="${done}" data-name="${exam.name.toLowerCase()}">
     <div class="row">
@@ -62,7 +67,7 @@ function examCard(exam) {
     <div class="flex">${badge}${nokey}</div>
     ${last}
     <div class="row">
-      <a class="btn" href="exam.html?exam=${encodeURIComponent(exam.id)}">${done ? 'Làm lại' : 'Vào làm'} →</a>
+      <a class="btn" href="exam.html?exam=${encodeURIComponent(exam.id)}">${done ? 'Làm lại' : (inprog ? 'Tiếp tục' : 'Vào làm')} →</a>
       ${done ? `<a class="btn ghost" href="exam.html?exam=${encodeURIComponent(exam.id)}&review=1">Xem lại</a>` : ''}
     </div>
   </div>`;

@@ -15,6 +15,7 @@ const LS_PROGRESS = 'mad101.progress.v1'; // { [examId]: {done, bestScore, lastS
 const LS_RESULTS  = 'mad101.results.v1';  // [ {examId, section, examName, total, correct, score, timeSec, finishedAt, picks} ]
 const LS_ADMIN    = 'mad101.admin.v1';    // "1" nếu đã đăng nhập admin
 const LS_STUDENT  = 'mad101.student.v1';  // { name, mssv }
+const LS_INPROG   = 'mad101.inprogress.v1'; // { [examId]: {picks, flags, elapsedSec, total, savedAt} }
 
 // ---- Đổi mật khẩu admin tại đây (lưu ý: web tĩnh không bảo mật thật,
 //      ai xem source cũng thấy — chỉ để tránh học viên bấm nhầm vào trang admin) ----
@@ -83,6 +84,11 @@ function saveResult(result) {
 // ---------- thông tin học viên ----------
 function getStudent() { return getJSON(LS_STUDENT, { name: '', mssv: '' }); }
 function setStudent(s) { setJSON(LS_STUDENT, s); }
+
+// ---------- lưu bài làm đang dở (để vào lại làm tiếp) ----------
+function getInProgress(examId) { const all = getJSON(LS_INPROG, {}); return all[examId] || null; }
+function setInProgress(examId, state) { const all = getJSON(LS_INPROG, {}); all[examId] = state; setJSON(LS_INPROG, all); }
+function clearInProgress(examId) { const all = getJSON(LS_INPROG, {}); delete all[examId]; setJSON(LS_INPROG, all); }
 
 // Gửi kết quả về Google Sheet (nếu đã cấu hình RESULTS_ENDPOINT).
 // Dùng no-cors + body text → không bị chặn CORS, không cần đọc phản hồi (gửi là xong).

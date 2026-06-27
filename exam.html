@@ -46,6 +46,7 @@
         <div class="navgrid" id="navgrid"></div>
         <div class="spacer"></div>
         <a class="btn ghost" href="index.html" style="width:100%;justify-content:center">Thoát</a>
+        <div class="muted small" style="text-align:center;margin-top:8px">💾 Bài làm tự lưu. Thoát ra rồi vào lại sẽ tiếp tục với thời gian còn lại.</div>
       </div>
     </aside>
 
@@ -67,6 +68,8 @@ const flags = new Set(); // chỉ số câu được gắn cờ
 let startTs = Date.now();
 let timerInt = null;
 let submitted = false;
+let started = false;     // đã bắt đầu tính giờ chưa
+let resumeElapsed = 0;   // số giây đã làm ở lần trước (khôi phục)
 let TOTAL_SEC = 0;       // tổng thời gian được phép (đếm ngược)
 
 function optEl(img, letter) {
@@ -117,6 +120,7 @@ function toggleFlag(idx) {
   document.getElementById(`nav-${idx}`).classList.toggle('flagged', !on);
   document.getElementById(`q-${idx}`).classList.toggle('flagged-card', !on);
   updateFlagCount();
+  saveState();
 }
 
 function onPick(img, letter, idx) {
@@ -126,6 +130,20 @@ function onPick(img, letter, idx) {
     o.classList.toggle('sel', o.dataset.letter === letter));
   document.getElementById(`nav-${idx}`).classList.add('answered');
   updateAnsweredCount();
+  saveState();
+}
+
+// Lưu bài làm đang dở (đáp án + cờ + thời gian đã dùng) để vào lại làm tiếp
+function saveState() {
+  if (submitted || !started) return;
+  const elapsedSec = Math.min((Date.now() - startTs) / 1000, TOTAL_SEC);
+  setInProgress(EXAM_ID, {
+    picks: { ...picks },
+    flags: [...flags],
+    elapsedSec,
+    total: EXAM.count,
+    savedAt: new Date().toISOString(),
+  });
 }
 
 function tick() {
@@ -142,11 +160,13 @@ function tick() {
   }
   el.textContent = fmtTime(remaining);
   el.style.color = remaining <= 60 ? 'var(--red)' : '';   // 1 phút cuối: đỏ
+  saveState();   // lưu lại thời gian còn lại mỗi giây
 }
 
 function gradeAndShow(timeSec, persist) {
   submitted = true;
   if (timerInt) clearInterval(timerInt);
+  if (persist) clearInProgress(EXAM_ID);   // đã nộp -> không khôi phục nữa
   let correct = 0;
   const hasKeyData = KEY && Object.keys(KEY).length > 0;
   const details = []; // chi tiết từng câu để gửi lên Sheet
@@ -284,6 +304,27 @@ function submit() {
     return;
   }
 
+  // khôi phục bài làm dở (nếu lần trước thoát giữa chừng chưa nộp)
+  const saved = getInProgress(EXAM_ID);
+  if (saved) {
+    Object.assign(picks, saved.picks || {});
+    EXAM.images.forEach((img, idx) => {
+      if (picks[img]) {
+        document.querySelectorAll(`#opts-${idx} .opt`).forEach(o =>
+          o.classList.toggle('sel', o.dataset.letter === picks[img]));
+        document.getElementById(`nav-${idx}`).classList.add('answered');
+      }
+    });
+    (saved.flags || []).forEach(idx => { if (!flags.has(idx)) toggleFlag(idx); });
+    updateAnsweredCount();
+    resumeElapsed = Math.min(saved.elapsedSec || 0, TOTAL_SEC);
+  }
+
+  // rời trang giữa chừng mà chưa nộp -> cảnh báo + lưu lại bài làm/thời gian
+  window.addEventListener('beforeunload', (e) => {
+    if (started && !submitted) { saveState(); e.preventDefault(); e.returnValue = ''; }
+  });
+
   document.getElementById('submitBtn').addEventListener('click', submit);
   startExamFlow();
 })();
@@ -311,10 +352,15 @@ function beginExam() {
   const s = getStudent();
   if (s.name) document.getElementById('subtitle').textContent += `  ·  👤 ${s.name}${s.mssv ? ' (' + s.mssv + ')' : ''}`;
   startTimer();
+  if (resumeElapsed > 0) {
+    const answered = Object.keys(picks).length;
+    toast(`Tiếp tục bài làm dở: ${answered} câu đã chọn · còn ${fmtTime(TOTAL_SEC - resumeElapsed)}`);
+  }
 }
 
 function startTimer() {
-  startTs = Date.now();
+  started = true;
+  startTs = Date.now() - resumeElapsed * 1000;  // tiếp tục từ thời gian đã làm
   tick();
   timerInt = setInterval(tick, 1000);
 }
